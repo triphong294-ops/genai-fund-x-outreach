@@ -5,16 +5,16 @@ from pydantic import BaseModel, Field
 
 class OutreachEvaluation(BaseModel):
     is_fit: bool = Field(
-        description="True nếu người này là builder, founder, researcher hoặc kỹ sư trong mảng AI models, dev tools, infrastructure, robotics hoặc embodied AI."
+        description="True if the person is a builder, founder, researcher, or engineer working on AI models, applications, dev tools, infrastructure, robotics, or embodied AI."
     )
     fit_reason: str = Field(
-        description="Giải thích ngắn gọn 1-2 câu tại sao họ phù hợp với quỹ đầu tư/hệ sinh thái AI Đông Nam Á của GenAI Fund."
+        description="Concise 1-2 sentence explanation of why they are relevant to GenAI Fund's Southeast Asia AI & Robotics ecosystem."
     )
     evidence_quote: str = Field(
-        description="Trích dẫn nguyên văn 1 chi tiết có thật từ Bio hoặc Tweet gần đây của họ để làm bằng chứng."
+        description="Verbatim quote or specific factual detail extracted strictly from their Bio or recent Tweets."
     )
     personalized_dm: str = Field(
-        description="Tin nhắn DM dưới 260 ký tự, giọng điệu tự nhiên như một founder/investor đồng nghiệp, nhắc trực tiếp tới evidence_quote, tuyệt đối không bịa đặt sự quen biết."
+        description="Natural, non-salesy 1-on-1 DM under 260 characters referencing the evidence_quote directly, with zero invented familiarity."
     )
 
 
@@ -25,35 +25,46 @@ def analyze_and_draft_dm(
     bio: str,
     location: str,
     recent_tweets: str,
+    model_name: str = "gemini-3.5-flash",
 ) -> OutreachEvaluation:
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key.strip())
 
     prompt = f"""
-Bạn là chuyên gia tìm kiếm nhân tài và nhà sáng lập (Outreach Associate) tại GenAI Fund — quỹ đầu tư xây dựng hệ sinh thái AI & Robotics tại Đông Nam Á.
+You are an Ecosystem & Talent Associate at GenAI Fund — a venture fund building AI and robotics ecosystems across Southeast Asia.
 
-Nhiệm vụ: Phân tích hồ sơ X (Twitter) dưới đây và viết 1 tin nhắn DM mở đầu cuộc trò chuyện.
+Task: Evaluate the X (Twitter) profile below and draft a warm, personalized 1-on-1 DM to start a genuine conversation.
 
-HỒ SƠ ỨNG VIÊN:
-- Tên: {display_name} (@{username})
-- Địa điểm: {location}
+CANDIDATE PROFILE:
+- Name: {display_name} (@{username})
+- Location: {location}
 - Bio: {bio}
-- Các bài đăng (Tweets) gần đây:
+- Recent Original Posts (Tweets):
 {recent_tweets}
 
-QUY TẮC BẮT BUỘC:
-1. Chỉ sử dụng bằng chứng CÓ THẬT trong Bio hoặc Tweets ở trên. Cấm bịa đặt dự án, bài báo hoặc giả vờ đã từng gặp/quen biết.
-2. Nếu Bio và Tweets không liên quan đến AI, ML, DevTools, Infra hoặc Robotics/Embodied AI, đặt is_fit = false.
-3. Tin nhắn DM (viết bằng tiếng Anh tự nhiên, chuyên nghiệp) phải ngắn gọn (< 260 ký tự), đi thẳng vào chi tiết kỹ thuật/dự án họ vừa chia sẻ, và gợi mở kết nối với GenAI Fund tại Đông Nam Á. Không dùng văn mẫu sáo rỗng ("I hope this finds you well", "synergy").
+STRICT GUARDRAILS:
+1. Grounding: Use ONLY verifiable facts present in the Bio or Recent Posts above. Never fabricate projects, papers, or pretend you have met/spoken before.
+2. Relevance Filter: If the profile is unrelated to AI, ML, DevTools, AI Infra, or Robotics/Embodied AI, set is_fit = false.
+3. Tone & Length: Write in natural, peer-to-peer English under 260 characters. Reference their specific technical work directly and open a light conversation around GenAI Fund's SEA ecosystem. Avoid generic fluff ("I hope this finds you well", "synergy", "revolutionary").
 """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=OutreachEvaluation,
-            temperature=0.35,
-        ),
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=OutreachEvaluation,
+        temperature=0.35,
     )
+
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
+        )
+    except Exception:
+        # Graceful fallback if the selected preview/newer model is unavailable on the user's API key
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=config,
+        )
 
     return OutreachEvaluation.model_validate_json(response.text)
