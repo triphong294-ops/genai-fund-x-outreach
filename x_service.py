@@ -2,7 +2,6 @@ import tweepy
 from typing import List, Dict, Tuple
 
 
-# Dữ liệu mẫu thực tế để chạy chế độ Dry-Run (không tốn X API credit)
 MOCK_PROFILES = [
     {
         "x_user_id": "900000001",
@@ -52,20 +51,23 @@ class XOutreachClient:
     ):
         self.dry_run = dry_run
         self.client = None
-        if not dry_run and bearer_token:
+        if not dry_run and bearer_token.strip():
             self.client = tweepy.Client(
-                bearer_token=bearer_token,
-                consumer_key=api_key or None,
-                consumer_secret=api_secret or None,
-                access_token=access_token or None,
-                access_token_secret=access_token_secret or None,
+                bearer_token=bearer_token.strip(),
+                consumer_key=api_key.strip() or None,
+                consumer_secret=api_secret.strip() or None,
+                access_token=access_token.strip() or None,
+                access_token_secret=access_token_secret.strip() or None,
                 wait_on_rate_limit=False,
             )
 
     def fetch_by_handles(self, handles: List[str]) -> Tuple[List[Dict], List[str]]:
-        """Lấy thông tin Profile + 5 Tweets mới nhất từ danh sách @handles."""
+        """Fetch user profile and up to 5 recent original tweets per handle."""
         if self.dry_run:
             return MOCK_PROFILES, []
+
+        if not self.client:
+            return [], ["X API client is not initialized. Please provide your X Bearer Token or enable Dry-Run Mode."]
 
         results = []
         errors = []
@@ -79,7 +81,7 @@ class XOutreachClient:
                     user_fields=["description", "location", "public_metrics"],
                 )
                 if not user_resp.data:
-                    errors.append(f"Không tìm thấy tài khoản @{clean_handle}")
+                    errors.append(f"Handle @{clean_handle} not found on X.")
                     continue
 
                 u = user_resp.data
@@ -90,7 +92,7 @@ class XOutreachClient:
                 )
                 tweets_text = "\n".join(
                     [f"- {t.text}" for t in (tweets_resp.data or [])]
-                ) or "(Không có bài đăng gốc gần đây)"
+                ) or "(No recent original tweets found)"
 
                 results.append({
                     "x_user_id": str(u.id),
@@ -101,14 +103,17 @@ class XOutreachClient:
                     "recent_tweets": tweets_text,
                 })
             except tweepy.TweepyException as e:
-                errors.append(f"Lỗi khi quét @{clean_handle}: {str(e)}")
+                errors.append(f"X API error fetching @{clean_handle}: {str(e)}")
 
         return results, errors
 
     def search_by_keyword(self, query: str, max_results: int = 10) -> Tuple[List[Dict], List[str]]:
-        """Tìm kiếm tác giả bài viết theo từ khóa (Yêu cầu X API Basic/Pay-per-use)."""
+        """Search recent tweets by domain keywords (Requires X API Basic or Pay-per-use credits)."""
         if self.dry_run:
             return MOCK_PROFILES, []
+
+        if not self.client:
+            return [], ["X API client is not initialized. Please provide your X Bearer Token or enable Dry-Run Mode."]
 
         results = []
         errors = []
@@ -138,18 +143,20 @@ class XOutreachClient:
                     "recent_tweets": f"- {tweet.text}",
                 })
         except tweepy.TweepyException as e:
-            errors.append(f"Lỗi Search API (Gói Free có thể bị chặn endpoint này): {str(e)}")
+            errors.append(f"X Search API error (requires active Pay-per-use credits or Basic tier): {str(e)}")
 
         return results, errors
 
     def send_direct_message(self, x_user_id: str, text: str) -> Tuple[str, str]:
         """
-        Gửi DM 1-1.
-        Trả về tuple: (status, error_message)
-        status thuộc: 'SENT' | 'DM_CLOSED' | 'RATE_LIMITED' | 'FAILED'
+        Send a 1-on-1 Direct Message via X API v2.
+        Returns: (status, error_message) -> 'SENT' | 'DM_CLOSED' | 'RATE_LIMITED' | 'FAILED'
         """
         if self.dry_run:
             return "SENT", ""
+
+        if not self.client:
+            return "FAILED", "Missing X OAuth 1.0a credentials."
 
         try:
             self.client.create_direct_message(
@@ -158,20 +165,22 @@ class XOutreachClient:
             )
             return "SENT", ""
         except tweepy.Forbidden as e:
-            return "DM_CLOSED", f"403 Forbidden: User khóa DM từ người lạ hoặc App thiếu quyền DM ({str(e)})"
+            return "DM_CLOSED", f"403 Forbidden: Recipient disabled DMs from non-followers or App lacks DM permission ({str(e)})"
         except tweepy.TooManyRequests as e:
-            return "RATE_LIMITED", f"429 Rate Limit: Chạm giới hạn gửi của X API ({str(e)})"
+            return "RATE_LIMITED", f"429 Rate Limit: X API DM rate limit reached ({str(e)})"
         except tweepy.TweepyException as e:
             return "FAILED", f"X API Error: {str(e)}"
 
     def fetch_incoming_replies(self, sent_user_ids: List[str]) -> Dict[str, str]:
-        """Kiểm tra xem các user đã gửi DM có nhắn tin phản hồi lại không."""
+        """Poll DM events to detect replies from contacted prospects."""
         if self.dry_run:
-            # Giả lập ứng viên đầu tiên trong Dry-Run đã phản hồi
             if "900000001" in sent_user_ids:
                 return {
                     "900000001": "Thanks for reaching out! Would love to chat about our VLA roadmap in SEA next week."
                 }
+            return {}
+
+        if not self.client:
             return {}
 
         replies_map = {}
