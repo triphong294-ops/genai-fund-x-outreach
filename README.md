@@ -9,7 +9,7 @@ Open the hosted Streamlit URL and enter your `GEMINI_API_KEY` (and optional X AP
 
 ### Option B: Run Locally
 ```bash
-git clone [https://github.com/triphong294-ops/genai-fund-x-outreach.git] (https://github.com/triphong294-ops/genai-fund-x-outreach.git)
+git clone https://github.com/triphong294-ops/genai-fund-x-outreach.git
 cd genai-fund-x-outreach
 pip install -r requirements.txt
-streamlit run app.py
+python3 -m streamlit run app.py
