@@ -8,6 +8,6 @@ A human-in-the-loop (HITL) outreach tool built for **GenAI Fund** to discover AI
 
 1. **Clone & Install:**
    ```bash
-   git clone <YOUR_GITHUB_REPO_URL> https://github.com/triphong294-ops/genai-fund-x-outreach.git
+   git clone https://github.com/triphong294-ops/genai-fund-x-outreach.git
    cd genai-fund-x-outreach
    pip install -r requirements.txt
